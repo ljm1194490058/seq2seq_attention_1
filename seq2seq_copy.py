@@ -383,6 +383,7 @@ def translate(input_sentence):
     plot_attention(attention_matrix, input_sentence.split(' '),
                    results.split(' '))
 
+
 translate(u'Hace mucho frío aquí.')   #it’s really cold here
 translate(u'¿Sigues en casa?')   #are you still at home?
 

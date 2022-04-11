@@ -916,6 +916,8 @@ def evaluate(inp_sentence):
             #维度缩减： (1, target_len) --> (target_len)
             return tf.squeeze(decoder_input, axis=0), attention_weights
 
+
+
         #若不相同，则添加到decoder_input中继续循环
         #decoder_input.shape :  (1, sentence_length)
         decoder_input = tf.concat([decoder_input, [predictions_id]],
