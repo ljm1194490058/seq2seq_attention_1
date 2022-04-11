@@ -1,13 +1,19 @@
 import matplotlib.pyplot as plt
-
+import sys
 import tensorflow as tf
 import time
 import numpy as np
+import sklearn
 import unicodedata
 import re
+import pandas as pd
 from tensorflow import keras
 from sklearn.model_selection import train_test_split
 
+# print(tf.__version__)
+# print(sys.version_info)
+# for module in np, pd, sklearn, tf, keras:
+#     print(module.__name__, module.__version__)
 # 1.预处理
 # 2.构建模型：encoder、attention、decoder、 损失和优化器、训练
 # Encoder通过学习输入，将其编码成一个固定大小的状态向量(语义编码向量.)S，继而将S传给Decoder，
@@ -124,7 +130,7 @@ class Encoder(keras.Model):
         super(Encoder, self).__init__()
         self.batch_size = batch_size
         self.encoding_units = encoding_units
-        self.embedding = keras.layers.Embedding(vocab_size,    #输入数目(序列个数)，文本数据中词汇取值的可能数，在字典内
+        self.embedding = keras.layers.Embedding(vocab_size,    #输入数目(词汇表大小)，文本数据中词汇取值的可能数，在字典内
                                                 embedding_units)   #输出向量大小
         #初始化，基于方差缩放  参考：https://blog.csdn.net/lygeneral/article/details/106733877
         self.gru = keras.layers.GRU(self.encoding_units,
@@ -133,7 +139,7 @@ class Encoder(keras.Model):
                                     recurrent_initializer='glorot_uniform')   #glorot_uniform，根据每层神经元数量调整参数方差。
 
     def call(self, x, hidden):
-        x = self.embedding(x)    #因为上面的embedding确定了前两个超参， 这里x指输入序列的长度 感觉是这样
+        x = self.embedding(x)    #因为上面的embedding确定了前两个超参，
         output, state = self.gru(x, initial_state=hidden)
         return output, state
 
@@ -164,18 +170,19 @@ class BahdanauAttention(keras.Model):
             decoder_hidden, 1)      #(64,  1024)进行维度拓展，在第一维拓，变成了 (64, 1, 1024)
 
         #before V: (batch_size, length, units)
-        #after V: (batch_size, length, 1)
+        #after V: (batch_size, length, 1)  #score可理解为相似度
         score = self.V(
             tf.nn.tanh(
                 self.W1(encoder_outputs) + self.W2(decoder_hidden_with_time_axis)))
 
-        #shape: (batch_size, length, 1)    (64, 17, 1)
+        #shape: (batch_size, length, 1)    (64, 17, 1)     #利用softmax将scores转化为概率分布。
         attention_weights = tf.nn.softmax(score, axis=1)   #在第一维(length)上算attention权重，
 
         #context_vector.shape: (batch_size, length, units)   (64, 17, 1024)
         context_vector = attention_weights * encoder_outputs   #(64, 17, 1024)*(64, 17, 1) tensorflow自己做拓展
 
         #context_vector.shape: (batch_size, units)   (64, 1024)
+        # #decoder的第t时刻的注意力向量，可理解为上下文向量
         context_vector = tf.reduce_sum(context_vector, axis=1)  #在length上求和，即将length个vector加在一起
 
         return context_vector, attention_weights
@@ -212,8 +219,10 @@ class Decoder(keras.Model):
         #after embedding: x.shape: (batch_size, 1, embedding_units)
         x = self.embedding(x)
 
+        # 此时combined_x的shape：  (64, 1, 1280)
         combined_x = tf.concat(      #拓展(batch_size, units)变为(batch_size,1， units)
             [tf.expand_dims(context_vector, 1), x] , axis = -1)    #设置-1即拼接最后一个维度
+
 
         #output.shape :  [batch_size, 1, decoding_units]
         #state.shape:  [batch_size, decoding_units]
@@ -321,6 +330,7 @@ def evaluate(input_sentence):
 
     inputs = [input_tokenizer.word_index[token] for token in input_sentence.split(' ')]   #转id
     inputs = keras.preprocessing.sequence.pad_sequences(
+        #[inputs]  因为需要是二维的
         [inputs], maxlen = max_length_input, padding = 'post')
     inputs = tf.convert_to_tensor(inputs)   #转化为tensor
 
@@ -348,6 +358,7 @@ def evaluate(input_sentence):
         attention_matrix[t] = attention_weights.numpy()
 
         # predictions.shape: (batch_size, vocab_size)    (1, 4744)
+        # 取出最大可能的word id
         predicted_id = tf.argmax(predictions[0]).numpy()
 
         results += output_tokenizer.index_word[predicted_id] + ' '
