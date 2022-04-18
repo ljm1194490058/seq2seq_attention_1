@@ -37,21 +37,24 @@ train_examples, val_examples = examples['train'], examples['validation']
 # print(info)
 #test': 1803,'train': 51785,'validation': 1193,
 
-#查看样本
+# 查看样本
 # for pt, en in train_examples.take(5):
 #     print(pt.numpy())   #.numpy 获取值
 #     print(en.numpy())
+# b"`` `` '' podem usar tudo sobre a mesa no meu corpo . ''"
+# b'you can use everything on the table on me .'
 
-# 取出英语的  使用了subword， 功能等同于tokenizer
-#下一行代码：文本做成类似字典的结构，既每个字都有对应的唯一数字
+
+# 取出英语的  使用了subword， 功能等同于tokenizer， 生成词汇表
+# 文本做成类似字典的结构，既每个字都有对应的唯一数字
 en_tokenizer = tfds.features.text.SubwordTextEncoder.build_from_corpus(
-    (en.numpy() for pt, en in train_examples), #需要编码的文本
-    target_vocab_size=2 ** 13)   #8192
+    (en.numpy() for pt, en in train_examples),
+    target_vocab_size=2 ** 13)   #词汇表大小：8192个词汇量
 
 #取葡萄牙语
 pt_tokenizer = tfds.features.text.SubwordTextEncoder.build_from_corpus(
-(pt.numpy() for pt, en in train_examples),  #需要编码的文本
-    target_vocab_size=2 ** 13)   #8192个词汇量
+(pt.numpy() for pt, en in train_examples),
+    target_vocab_size=2 ** 13)   #
 
 ###################测试是否tokenizer 成功###################
 sample_string = "Transformer is awesome."
@@ -422,8 +425,8 @@ class EncoderLayer(keras.layers.Layer):
         #x.shape : (batch_size, seq_len, dim = d_model)  dim = d_model才能做残差连接
         #attn_output.shape:  (batch_size, seq_len, d_model)
         #out1.shape :   (batch_size, seq_len, d_model)
-        attn_output, _ = self.mha(x, x, x, encoder_padding_mask)   #先做self_sttention  告诉dropout此时在训练
-        attn_output = self.dropout1(attn_output, training= training)
+        attn_output, _ = self.mha(x, x, x, encoder_padding_mask)   #先做self_sttention
+        attn_output = self.dropout1(attn_output, training= training)  #training：告诉dropout此时在训练
         #同时做了残差连接和normalize
         out1 = self.layer_norm1(x + attn_output)
 
@@ -531,6 +534,7 @@ class EncoderModel(keras.layers.Layer):
     def call(self, x, training, encoder_padding_mask):
         #x.shape: (batch_size, input_seq_len)
         input_seq_len = tf.shape(x)[1]
+        #使用tf自带的断言，以免异常发生
         tf.debugging.assert_less_equal(input_seq_len , self.max_length,
                                        "input_seq_len should be less or equal to max_length")
 
@@ -693,7 +697,10 @@ for key in attention_weights:
 # decoder_layer2_att1 (64, 8, 31, 31)
 # decoder_layer2_att2 (64, 8, 31, 26)
 
-#####################################################
+
+
+
+############################ transformer连接后#########################
 # 1.初始化模型
 # 2.定义损失，优化器，learning_rate schedule（它能动态调整learning_rate）
 # 3.训练
@@ -716,7 +723,7 @@ transformer = Transformer(num_layers,
                           d_model, num_heads, dff, dropout_rate)
 
 
-####自动调节learning rate方法
+############################自动调节learning rate方法
 #公式：  lrate = (d_model ** -0.5) * min(step_num ** (-0.5),
 #                                   step_num * warm_up_steps ** (-1.5))
 #先增后减
@@ -747,7 +754,6 @@ optimizer = keras.optimizers.Adam(learning_rate,
 
 
 temp_learning_rate_schedule = CustomizedSchedule(d_model)
-
 plt.plot(
     temp_learning_rate_schedule(
         tf.range(40000, dtype=tf.float32)))

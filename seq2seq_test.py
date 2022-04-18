@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 import sys
-import tensorflow as tf
+import tensorflow as tf        #2.1.0
 import time
 import numpy as np
 import sklearn
@@ -14,20 +14,26 @@ from sklearn.model_selection import train_test_split
 # print(sys.version_info)
 # for module in np, pd, sklearn, tf, keras:
 #     print(module.__name__, module.__version__)
+
+#运用seq2seq+注意力机制做西班牙语和英语的机器翻译
 # 1.预处理
 # 2.构建模型：encoder、attention、decoder、 损失和优化器、训练
 # Encoder通过学习输入，将其编码成一个固定大小的状态向量(语义编码向量.)S，继而将S传给Decoder，
 # Decoder再通过对状态向量S的学习来进行输出。
 # 3.评估：给句子返回结果、 结果中的词在原句子中的权重
 
+#西班牙语和英语翻译语料 \t分割
 file_path = r'C:\Users\独为我唱\Desktop\spa-eng\spa.txt'
+
 
 test_eng = 'Duck!'
 test_spa = '¡Inclínate!'
-#由unicode转ascii 主要为了降低词表  毕竟ascii只有两百多
+
+#由unicode转ascii 主要为了降低词表  毕竟ascii只有两百多   这里按数据集可用可不用
 def unicode_to_ascii(s):
     #NFD ： 如果一个ascii由多个unicode组成， 则拆开
     return ''.join(c for c in unicodedata.normalize('NFD',s) if unicodedata.category(c) != 'Mn')
+
 
 #对每个句子进行预处理
 def preprocess_sentence(s):
@@ -44,7 +50,8 @@ def preprocess_sentence(s):
     return s
 # print(preprocess_sentence(test_eng))
 
-#分隔开西班牙与和英语
+
+#分隔开西班牙与和英语， 将西班牙与和英语分别放在两个dataset中
 def parse_data(filename):
     lines = open(file_path, encoding='UTF-8').read().strip().split('\n')
     sentence_pairs = [line.strip().split('\t',1) for line in lines]    #英文和西班牙语\t分隔开的，且每句结尾有\t，故分割一次
@@ -57,7 +64,7 @@ en_dataset, sp_dataset = parse_data(file_path)
 # print(preprocess_sentence(en_dataset[-1]))
 
 
-#数据id化，生成词典
+#数据id化，生成词典  使用tokenizer
 def tokenizer(lang):
     lang_tokenizer = keras.preprocessing.text.Tokenizer(
         num_words=None, filters='', split=' '     #对词语数目无限制， 不过滤， 以空格为分割
@@ -69,10 +76,10 @@ def tokenizer(lang):
     )
     return tensor, lang_tokenizer
 
+######这里将西班牙语设定为输入， 英语设定为输出###########
 input_tensor, input_tokenizer = tokenizer(sp_dataset[0:30000])   #input_tensor类似于二维数组. 全是文本的id
 output_tensor, output_tokenizer = tokenizer(en_dataset[0:30000])   #[[   1   25  729 ...    0    0    0]
                                                                     # [   1   25 4828 ...    0    0    0]]
-
 
 def max_length(tensor):
     return max(len(t) for t in tensor)
@@ -85,7 +92,8 @@ max_length_output = max_length(output_tensor)
 ################## 做dataset 训练集测试集###################
 input_train, input_eval, output_train, output_eval = train_test_split(input_tensor, output_tensor, test_size=0.2)
 
-#验证tokenizer是否正常转换
+
+#验证tokenizer是否正常转换  只是验证用
 def convert(example, tokenizer):
     for t in example:
         if t != 0:
@@ -118,8 +126,9 @@ for x, y in train_dataset.take(1):
     # print(y.shape)  #(64, 10)
 
 
+
 ##########################模型定义￥#############################
-#超参定义
+#超参定义  encoder， decoder， 注意力机制
 embedding_units = 256    #每个单词转为embedding是多少维
 units = 1024     #神经网络用的units， encoder与decoder的一样
 input_vocab_size = len(input_tokenizer.word_index) + 1     #9326 tokenizer字典长度+1
@@ -145,6 +154,7 @@ class Encoder(keras.Model):
 
     def initialize_hidden_state(self):   #初始化的隐藏状态，
         return tf.zeros((self.batch_size, self.encoding_units))   #生成全为0的shape为(64, 1024)的隐藏状态
+
 
 #调用后，输出encoder的隐藏状态以及每一步的输出   call函数
 encoder = Encoder(input_vocab_size, embedding_units, units, batch_size)   #units对应encoding_units
@@ -238,16 +248,15 @@ class Decoder(keras.Model):
         return output, state, attention_weights
 
 decoder = Decoder(output_vocab_size, embedding_units, units, batch_size)
-
 outputs = decoder.call(tf.random.uniform((batch_size, 1)),   #x使用随机数据去模拟
                   sample_hidden,
                   sample_output)
 
 decoder_output, decoder_hidden, decoder_aw = outputs
-
 print("decoder_output.shape: ", decoder_output.shape)    #(64, 4744)
 print("decoder_hidden.shape: ", decoder_hidden.shape)    #(64, 1024)
 print("decoder_attention_weights.shape: ", decoder_aw.shape)   #(64, 17, 1)
+
 
 
 ###############损失函数##############
@@ -267,6 +276,8 @@ def loss_function(real, pred):
     loss_ *= mask
 
     return tf.reduce_mean(loss_)   #取平均
+
+
 
 ###################计算多步损失函数进而可以做梯度下降#############
 @tf.function
@@ -297,6 +308,7 @@ def train_step(inp, targ, encoding_hidden):
     return batch_loss
 
 
+
 ####################训练模型#################
 epochs = 10
 steps_per_epoch = len(input_tensor) // batch_size
@@ -323,12 +335,13 @@ for epoch in range(epochs):
     print('Time take for 1 epoch {} sec\n'.format(time.time() - start))
 
 
+
 ###################评估############
-def evaluate(input_sentence):
+def evaluate(input_sentence, tokenizer_in, tokenizer_out):
     attention_matrix = np.zeros((max_length_output, max_length_input))
     input_sentence = preprocess_sentence(input_sentence)
 
-    inputs = [input_tokenizer.word_index[token] for token in input_sentence.split(' ')]   #转id
+    inputs = [tokenizer_in.word_index[token] for token in input_sentence.split(' ')]   #转id
     inputs = keras.preprocessing.sequence.pad_sequences(
         #[inputs]  因为需要是二维的
         [inputs], maxlen = max_length_input, padding = 'post')
@@ -345,7 +358,7 @@ def evaluate(input_sentence):
     #A --> B --> C --> D
 
     #因为输入是二维， [1,1]
-    decoding_input = tf.expand_dims([output_tokenizer.word_index['<start>']], 0)
+    decoding_input = tf.expand_dims([tokenizer_out.word_index['<start>']], 0)
 
     #这个for循环会将上一次循环的输出作为本次循环的输入
     #同时保存好attention_matrix， attention_matrix代表了输入和输出的注意力关系
@@ -361,14 +374,24 @@ def evaluate(input_sentence):
         # 取出最大可能的word id
         predicted_id = tf.argmax(predictions[0]).numpy()
 
-        results += output_tokenizer.index_word[predicted_id] + ' '
+        results += tokenizer_out.index_word[predicted_id] + ' '
 
-        if output_tokenizer.index_word[predicted_id] == '<end>':
+        if tokenizer_out.index_word[predicted_id] == '<end>':
             return results, input_sentence, attention_matrix
 
         decoding_input = tf.expand_dims([predicted_id], 0)
+    return results, input_sentence, attention_matrix
+
+
+def evaluate_diff_language(convert_language_name, input_sentence):
+    if convert_language_name == '英语':
+        results, input_sentence, attention_matrix = evaluate(input_sentence, input_tokenizer, output_tokenizer)
+
+    elif convert_language_name == '西班牙语':
+        results, input_sentence, attention_matrix = evaluate(input_sentence, output_tokenizer, input_tokenizer)
 
     return results, input_sentence, attention_matrix
+
 
 #可视化attention_matrix
 def plot_attention(attention_matrix, input_sentence, predicted_sentence):
@@ -379,12 +402,13 @@ def plot_attention(attention_matrix, input_sentence, predicted_sentence):
     font_dict = {'fontsize': 14}
     ax.set_xticklabels([''] + input_sentence, fontdict=font_dict, rotation = 90)
     ax.set_yticklabels([''] + predicted_sentence, fontdict=font_dict)
-
     plt.show()
 
+
+
 #集成plot_attention 和evaluate
-def translate(input_sentence):
-    results, input_sentence, attention_matrix = evaluate(input_sentence)
+def translate(convert_language_name, input_sentence):
+    results, input_sentence, attention_matrix = evaluate_diff_language(convert_language_name,input_sentence)
 
     print("Input: %s" % (input_sentence))
     print("Predicted  translation: %s " % (results))
@@ -394,9 +418,11 @@ def translate(input_sentence):
     plot_attention(attention_matrix, input_sentence.split(' '),
                    results.split(' '))
 
-translate(u'Hace mucho frío aquí.')   #it’s really cold here
-translate(u'¿Sigues en casa?')   #are you still at home?
 
+
+translate('英语','Hace mucho frío aquí.')   #it’s really cold here
+translate('英语','¿Sigues en casa?')   #are you still at home?
+translate('西班牙语', u'it s very cold here.')   #la me conoces de dijo . <end>
 
 
 
