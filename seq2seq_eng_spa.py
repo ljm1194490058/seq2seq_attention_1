@@ -337,11 +337,11 @@ for epoch in range(epochs):
 
 
 ###################评估############
-def evaluate(input_sentence):
+def evaluate(input_sentence, tokenizer_in, tokenizer_out):
     attention_matrix = np.zeros((max_length_output, max_length_input))
     input_sentence = preprocess_sentence(input_sentence)
 
-    inputs = [input_tokenizer.word_index[token] for token in input_sentence.split(' ')]   #转id
+    inputs = [tokenizer_in.word_index[token] for token in input_sentence.split(' ')]   #转id
     inputs = keras.preprocessing.sequence.pad_sequences(
         #[inputs]  因为需要是二维的
         [inputs], maxlen = max_length_input, padding = 'post')
@@ -358,7 +358,7 @@ def evaluate(input_sentence):
     #A --> B --> C --> D
 
     #因为输入是二维， [1,1]
-    decoding_input = tf.expand_dims([output_tokenizer.word_index['<start>']], 0)
+    decoding_input = tf.expand_dims([tokenizer_out.word_index['<start>']], 0)
 
     #这个for循环会将上一次循环的输出作为本次循环的输入
     #同时保存好attention_matrix， attention_matrix代表了输入和输出的注意力关系
@@ -374,15 +374,23 @@ def evaluate(input_sentence):
         # 取出最大可能的word id
         predicted_id = tf.argmax(predictions[0]).numpy()
 
-        results += output_tokenizer.index_word[predicted_id] + ' '
+        results += tokenizer_out.index_word[predicted_id] + ' '
 
-        if output_tokenizer.index_word[predicted_id] == '<end>':
+        if tokenizer_out.index_word[predicted_id] == '<end>':
             return results, input_sentence, attention_matrix
 
         decoding_input = tf.expand_dims([predicted_id], 0)
-
     return results, input_sentence, attention_matrix
 
+
+def evaluate_diff_language(convert_language_name, input_sentence):
+    if convert_language_name == '英语':
+        results, input_sentence, attention_matrix = evaluate(input_sentence, input_tokenizer, output_tokenizer)
+
+    elif convert_language_name == '西班牙语':
+        results, input_sentence, attention_matrix = evaluate(input_sentence, output_tokenizer, input_tokenizer)
+
+    return results, input_sentence, attention_matrix
 
 
 #可视化attention_matrix
@@ -399,8 +407,8 @@ def plot_attention(attention_matrix, input_sentence, predicted_sentence):
 
 
 #集成plot_attention 和evaluate
-def translate(input_sentence):
-    results, input_sentence, attention_matrix = evaluate(input_sentence)
+def translate(convert_language_name, input_sentence):
+    results, input_sentence, attention_matrix = evaluate_diff_language(convert_language_name,input_sentence)
 
     print("Input: %s" % (input_sentence))
     print("Predicted  translation: %s " % (results))
@@ -412,9 +420,9 @@ def translate(input_sentence):
 
 
 
-translate(u'Hace mucho frío aquí.')   #it’s really cold here
-translate(u'¿Sigues en casa?')   #are you still at home?
-
+translate('英语','Hace mucho frío aquí.')   #it’s really cold here
+translate('英语','¿Sigues en casa?')   #are you still at home?
+translate('西班牙语', u'it s very cold here.')   #la me conoces de dijo . <end>
 
 
 
